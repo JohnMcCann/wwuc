@@ -1,0 +1,10 @@
+
+# <type>: <subject>
+## <types> - feat, dbug, docs, styl, rfct, test, chor
+## <subject> - If this commit is applied, it will...
+### Leave next line blank
+
+# <body> - Why was this commit made?
+
+
+# <footer> - references to issues, tickets, etc.

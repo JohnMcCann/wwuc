@@ -1,0 +1,8 @@
+axes.prop_cycle: cycler('color', ['076678', 'd65d0e', 'a7a820', '9d0006', '8f3f71','af3a03', 'd3869b', '928374', 'd79921', '427b58'])
+figure.facecolor: 1d2021
+axes.facecolor: 1d2021
+axes.edgecolor: ebdbb2
+axes.labelcolor: ebdbb2
+xtick.color: ebdbb2
+ytick.color: ebdbb2
+text.color: ebdbb2

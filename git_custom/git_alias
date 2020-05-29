@@ -1,0 +1,282 @@
+#!/bin/bash
+
+error() {
+    echo "$1" >&2   ## Send message to stderr
+                    ## Exclude >&2 if you don't want it that way.
+    exit "${2:-1}"  ## Return a code specified by $2 or 1 by default.
+}
+
+HASH="%C(bold red)%h%Creset"
+COMMIT_DATE="%Cgreen(%cr)%Creset"
+AUTHOR="%C(bold blue)<%an>%Creset"
+AUTHOR_DATE="%Cgreen(%ar)%Creset"
+EMAIL="%aE"
+REFS="%C(yellow)%d%Creset"
+SUBJECT="%<(50,trunc)%s" # If subject is >50 char you are broken, not this code
+TRUNC_SUBJECT="%<(30,trunc)%s"
+GORY_BODY="%<(72)%b"
+
+# Start Format with "{" to help locate graph. You may place 
+# objects before "{" if you wish them to be flush with the graph.
+# Things you wish to align enclose with "}"
+STANDARD="{}$HASH $SUBJECT}$REFS}"
+BLAME="{}$HASH $TRUNC_SUBJECT}$AUTHOR}$EMAIL}$AUTHOR_DATE}"
+GORY="{}$HASH $SUBJECT}$REFS}%n$GORY_BODY"
+
+ANSI_BLACK='\033[30m'
+ANSI_BLACK_BOLD='\033[0;30;1m'
+ANSI_RED='\033[31m'
+ANSI_RED_BOLD='\033[0;31;1m'
+ANSI_GREEN='\033[32m'
+ANSI_GREEN_BOLD='\033[0;32;1m'
+ANSI_YELLOW='\033[33m'
+ANSI_YELLOW_BOLD='\033[0;33;1m'
+ANSI_BLUE='\033[34m'
+ANSI_BLUE_BOLD='\033[0;34;1m'
+ANSI_MAGENTA='\033[35m'
+ANSI_MAGENTA_BOLD='\033[0;35;1m'
+ANSI_CYAN='\033[36m'
+ANSI_CYAN_BOLD='\033[0;36;1m'
+ANSI_WHITE='\033[37m'
+ANSI_WHITE_BOLD='\033[0;37;1m'
+ANSI_RESET='\033[0m'
+
+show_git_head() {
+  pretty_git_log -1
+  git show -p --pretty="tformat:"
+}
+
+glog_align(){
+  eval $1 |
+  # Replace (2 years ago) with (2 years)
+  sed -Ee 's/(^[^<]*) ago\)/\1)/' |
+  # Replace (2 years, 5 months) with (2 years)
+  sed -Ee 's/(^[^<]*), [[:digit:]]+ .*months?\)/\1)/' |
+  # Replace colors with placeholders
+  sed "s,$(printf '\033')\[0m,%z,g" |
+  sed "s,$(printf '\033')\[m,%z,g" |
+  sed "s,$(printf '\033')\[31m,%r,g" |
+  sed "s,$(printf '\033')\[1;31m,%R,g" |
+  sed "s,$(printf '\033')\[32m,%g,g" |
+  sed "s,$(printf '\033')\[1;32m,%G,g" | 
+  sed "s,$(printf '\033')\[33m,%y,g" |
+  sed "s,$(printf '\033')\[1;33m,%Y,g" |
+  sed "s,$(printf '\033')\[34m,%b,g" |
+  sed "s,$(printf '\033')\[1;34m,%B,g" |
+  sed "s,$(printf '\033')\[35m,%m,g" |
+  sed "s,$(printf '\033')\[1;35m,%M,g" |
+  sed "s,$(printf '\033')\[36m,%c,g" | 
+  sed "s,$(printf '\033')\[1;36m,%C,g" |
+  sed "s,$(printf '\033')\[37m,%w,g" |
+  sed "s,$(printf '\033')\[1;37m,%W,g" | 
+  # Padded the text to have the delimiters in right place
+  perl -ne '{
+              push @line, substr($_,0,-1); push @end, substr($_,-2,-1);
+            } END {
+              for (my $i=0; $i<=$#line; $i++) {
+                if ($end[$i] ne "}"){
+                  $spot=rindex($line[$i],"|%z "); 
+                  $spot=$spot>rindex($line[$i],"\%z ")
+                       ? $spot:rindex($line[$i],"\%z ");
+                  $spot=$spot>rindex($line[$i],"/%z ")
+                       ? $spot:rindex($line[$i],"/%z ");
+                  substr($line[$i],$spot+3,0) = "{}";
+                  print $line[$i]."}}"}
+                else{print $line[$i];}
+                print "\n";
+              }
+            }' | 
+  perl -ne '{
+               push @line, $_; my @a = split "}"; 
+               $a[$_] =~ s/^\s+|\s+$//g for (0 .. $#a);
+               push @matrix, \@a; $_ = $a[0]; push @len, $#a;
+               $lmax = $#a if $#a > $len; push @zr, $a[0]; $n = tr/%/%/;
+               push @n, $n; $max = $n if $n > $max; 
+             } END { $/ = "";
+               for (my $i=0; $i<=$#line; $i++) {
+                 for (my $j=0; $j<=($lmax+1); $j++){
+                   if ($j<@{$matrix[$i]}){
+                     if ($j==0){print "%z"x($max-$n[$i]);}
+                     print $matrix[$i]->[$j];
+#                      if ($j==0 && @{$matrix[$i]}==1){print "{";}
+                     print "}";
+                   }
+                   elsif ($j==$lmax+1){
+                     print "%z"x($max-$n[$i]);
+                     if (@{$matrix[$i]}==1){print $zr[$i];}
+                     else{print substr($zr[$i],0,-1)};
+                     print "}";
+                   }
+                   else{
+                     print "}";
+                   }
+                 }
+                 print "\n";
+               }
+             }' |
+  # Pad out placeholders
+  awk -F '{' '{gsub("%[a-z]","", $1); print}' | 
+  # Line columns up based on } delimiter
+  sed 's,},{},g' |
+  column -s '{' -t | 
+  # Swap last column (colored graph) with first (colorless graph)
+  awk -F '}' '{$1=$(NF-1); $(NF-1)=""; print;}'  |
+  # Put colors back
+  sed "s,%z,$(printf '\033')\[m,g" |
+  sed "s,%r,$(printf '\033')\[31m,g" |
+  sed "s,%R,$(printf '\033')\[0;31;1m,g" |
+  sed "s,%g,$(printf '\033')\[32m,g" |
+  sed "s,%G,$(printf '\033')\[0;32;1m,g" |
+  sed "s,%y,$(printf '\033')\[33m,g" |
+  sed "s,%Y,$(printf '\033')\[0;33;1m,g" |
+  sed "s,%b,$(printf '\033')\[34m,g" |
+  sed "s,%B,$(printf '\033')\[0;34;1m,g" |
+  sed "s,%m,$(printf '\033')\[35m,g" |
+  sed "s,%M,$(printf '\033')\[0;35;1m,g" |
+  sed "s,%c,$(printf '\033')\[36m,g" |
+  sed "s,%C,$(printf '\033')\[0;36;1m,g" |
+  sed "s,%w,$(printf '\033')\[37m,g" |
+  sed "s,%W,$(printf '\033')\[0;37;1m,g" |
+
+  # Color merge commits specially
+  sed -Ee "s/(merg: .*$)/$(printf $ANSI_BLUE)\1$(printf $ANSI_RESET)/" |
+  # Color branch names (GORY)
+  sed -Ee "s,\((.*)\):,$(printf $ANSI_CYAN)\(\1\):$(printf $ANSI_RESET)," |
+  # Color commit type
+  sed -Ee "s,init:,$(printf $ANSI_GREEN)init:$(printf $ANSI_RESET)," |
+  sed -Ee "s,dbug:,$(printf $ANSI_GREEN)dbug:$(printf $ANSI_RESET)," |
+  sed -Ee "s,docs:,$(printf $ANSI_GREEN)docs:$(printf $ANSI_RESET)," |
+  sed -Ee "s,feat:,$(printf $ANSI_GREEN)feat:$(printf $ANSI_RESET)," |
+  sed -Ee "s,chor:,$(printf $ANSI_GREEN)chor:$(printf $ANSI_RESET)," |
+  sed -Ee "s,rfct:,$(printf $ANSI_GREEN)rfct:$(printf $ANSI_RESET)," |
+  sed -Ee "s,styl:,$(printf $ANSI_GREEN)styl:$(printf $ANSI_RESET)," |
+  sed -Ee "s,test:,$(printf $ANSI_GREEN)test:$(printf $ANSI_RESET)," |
+  # Page only if we're asked to.
+  if [[ -n "$GIT_NO_PAGER" ]]; then
+    cat
+  else
+    # Page only if needed.
+    less -FXSR
+#    less --quit-if-one-screen --no-init --RAW-CONTROL-CHARS --chop-long-lines
+  fi
+}
+
+pretty_git_log(){
+  glog_align "git log --color=always --graph --pretty=tformat:'$STANDARD'"
+}
+
+pretty_git_log_all(){
+  glog_align "git log --color=always --graph --all --pretty=tformat:'$STANDARD'"
+}
+
+pretty_git_log_blame(){
+  glog_align "git log --color=always --graph --pretty=tformat:'$BLAME'"
+}
+
+pretty_git_log_gory(){
+  glog_align "git log --color=always --graph --pretty=tformat:'$GORY'"
+}
+
+git_arg_check(){
+  if test $1 -ne $2; then
+    echo "$(printf $ANSI_RED)error$(printf $ANSI_RESET):" "$3" 'takes' "$2" 'arguments, supplied' "$1"
+    echo "$(printf $ANSI_YELLOW)useage$(printf $ANSI_RESET):" "$3" "${@:4}"
+    exit 1
+  fi
+}
+
+#  input:
+#    $1=project name
+git_genesis(){
+  git_arg_check $# 1 $FUNCNAME 'project_name' &&
+  git init --bare $1_repo &&
+  git clone $1_repo $1 &&
+  cd $1 &&
+  git commit --allow-empty -m "init: Null commit" -m "(master/): Commit early, commit often." &&
+  git push &&
+  git branch development &&
+  git push -u origin development &&
+  cd ..
+}
+
+#  input:
+#    $1=project name
+#    $2=origin remote
+git_introduce(){
+  git_arg_check $# 2 $FUNCNAME 'project_name' 'origin_remote'
+  cd "$1"
+  git remote add origin "$2"
+  git remote add all "$2"
+  git push -u origin --all
+  git push -u origin --tags
+  cd ..
+}
+
+#  input:
+#    $1=project name
+#    $2=gitlab username
+git_introgitlab(){
+  git_arg_check $# 2 $FUNCNAME 'project_name' 'gitlab_username'
+  gitlab_origin="git@gitlab.com:$2/$1.git"
+  cd "$1"_repo
+  git push --set-upstream "$gitlab_origin" master
+  git remote add origin-gitlab "$gitlab_origin"
+  git push -u origin-gitlab --all
+  git push -u origin-gitlab --tags
+  cd ../"$1"
+  git remote add origin-gitlab "$gitlab_origin"
+  git remote add all "$gitlab_origin"
+  git remote set-url --add --push all "$gitlab_origin"
+  cd ..
+}
+
+#  input:
+#    $1=git repo name
+#    $2=github username
+git_introgithub(){
+  git_arg_check $# 2 $FUNCNAME 'project_name' 'github_username'
+  github_origin="git@github.com:$2/$1.git"
+  cd $1_repo
+  github_string='{"name":"'"$1"'","private":"true"}'
+  curl -u "$2" https://api.github.com/user/repos -d "$github_string"
+  git remote add origin-github "$github_origin"
+  git push -u origin-github --all
+  git push -u origin-github --tags
+  cd ../$1
+  git remote add origin-github "$github_origin"
+  git remote set-url --add --push all "$github_origin"
+  cd ..
+}
+
+#  input:
+#    $1=project name
+#    $2=origin remote
+git_death_of_a_salesman(){
+  git_arg_check $# 2 $FUNCNAME 'project_name' 'origin_remote'
+  cd $1
+  git remote set-url origin $2
+  cd ..
+  rm -rf $1_repo
+}
+
+#  input:
+#    $1=project name
+#    $2=origin remote
+git_omnistart(){
+  git_arg_check $# 2 $FUNCNAME 'project_name' 'origin_remote' &&
+  git_genesis $1 &&
+  git_introduce $1_repo $2 &&
+  git_death_of_a_salesman $1 $2
+}
+
+#  input:
+#    $1=project name
+#    $2=gitlab username
+#    $3=github username
+git_initwww(){
+  git_arg_check $# 3 $FUNCNAME 'project_name' 'gitlab_username' 'github_username' &&
+  git_genesis $1 &&
+  git_introgitlab $1 $2 &&
+  git_introgithub $1 $3 &&
+  git_death_of_a_salesman $1 "git@gitlab.com:$2/$1.git"
+}
