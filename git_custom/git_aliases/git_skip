@@ -1,0 +1,95 @@
+#!/bin/bash
+
+error() {
+    echo "$1" >&2   ## Send message to stderr
+                    ## Exclude >&2 if you don't want it that way.
+    exit "${2:-1}"  ## Return a code specified by $2 or 1 by default.
+}
+
+#  input:
+#    $1=files
+#  flags:
+#    -l, --list: list files currently skipped
+git_skip(){
+  while test $# -gt 0;do
+    case "$1" in
+      -*)
+        # double hypen options
+        if test "${1:1:1}" = "-";then
+          case "${1:2}" in
+            list)
+              git ls-files -v | grep "^S"
+              exit 0
+            ;;
+            *)
+              error "unrecognized option --${1:2}"
+            ;;
+          esac
+        # signle hypen options
+        else
+          case "${1:1}" in
+            l)
+              git ls-files -v | grep "^S"
+              exit 0
+            ;;
+            *)
+              error "unrecognized option -${1:1}"
+            ;;
+          esac
+        fi
+        shift
+        continue
+      ;;
+      *)
+        git update-index --skip-worktree $@
+        exit 0
+      ;;
+    esac
+  done
+}
+
+#  input:
+#    $1=files
+#  flags:
+#    -a, --all: unskip all files being skipped
+git_unskip(){
+  while test $# -gt 0;do
+    case "$1" in
+      -*)
+        # double hypen options
+        if test "${1:1:1}" = "-";then
+          case "${1:2}" in
+            all)
+              git ls-files -v | grep -i ^S | cut -c 3- | \
+                tr ''\\012'' ''\\000'' | \
+                xargs -0 git update-index --no-skip-worktree
+              exit 0
+            ;;
+            *)
+              error "unrecognized option --${1:2}"
+            ;;
+          esac
+        # signle hypen options
+        else
+          case "${1:1}" in
+            a)
+              git ls-files -v | grep -i ^S | cut -c 3- | \
+                tr ''\\012'' ''\\000'' | \
+                xargs -0 git update-index --no-skip-worktree
+              exit 0
+            ;;
+            *)
+              error "unrecognized option -${1:1}"
+            ;;
+          esac
+        fi
+        shift
+        continue
+      ;;
+      *)
+        git update-index --no-skip-worktree $@
+        exit 0
+      ;;
+    esac
+  done
+}

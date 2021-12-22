@@ -25,5 +25,7 @@ setlocal ts=4
 setlocal sw=4
 endfunction
 
+" diff commands
 let @o='do]czz'
 let @p='dp]czz'
+autocmd BufWritePost * if &diff == 1 | diffupdate | endif
